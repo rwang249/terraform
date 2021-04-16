@@ -1,0 +1,56 @@
+before_script:
+  - case $GCP_PROJECT in
+         test) 
+            WORKSPACE_NAME=$GCP_PROJECT && echo $TEST_SVC_ACCOUNT > environments/$WORKSPACE_NAME/test.json
+            ;;
+         *)
+           echo "Not a valid workspace name, ABORTING" && exit 1;                 
+      esac
+  - cd environments/$WORKSPACE_NAME
+  - rm -rf .terraform
+  - terraform --version
+  - terraform init
+  - terraform workspace select $WORKSPACE_NAME || terraform workspace new $WORKSPACE_NAME
+
+
+stages:
+  - validate
+  - plan
+  - apply
+
+validate:
+  image:
+    name: gcr.io/test/terraform-gcp:ubuntu
+  stage: validate
+  tags:
+    - INFRA 
+  script:
+    - terraform validate
+
+plan:
+  image:
+    name: gcr.io/test/terraform-gcp:ubuntu
+  stage: plan
+  tags:
+    - INFRA
+  script:
+    - terraform plan -out="../../planfile"
+  dependencies:
+    - validate
+  artifacts:
+    paths:
+      - planfile
+
+apply:
+  image:
+    name: gcr.io/test/terraform-gcp:ubuntu
+  stage: apply
+  tags:
+    - INFRA
+  script:
+    - cat *.json > key.json
+    - /google-cloud-sdk/bin/gcloud auth activate-service-account --key-file key.json
+    - terraform apply -input=false "../../planfile"
+  dependencies:
+    - plan
+  when: manual
